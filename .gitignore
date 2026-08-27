@@ -1,0 +1,15 @@
+# Machine-specific settings -- real paths differ per person running this,
+# should never be committed (see local_settings.example.yaml for the
+# template everyone copies from instead).
+local_settings.yaml
+
+# Real client files -- these are the client's data, not project code.
+*.xlsx
+
+# Generated output
+migrated_content/
+_review_report.json
+
+__pycache__/
+*.pyc
+.DS_Store

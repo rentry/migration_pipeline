@@ -1,0 +1,6 @@
+requests>=2.33
+beautifulsoup4>=4.14
+lxml>=6.0
+markdownify>=1.2
+PyYAML>=6.0
+openpyxl>=3.1

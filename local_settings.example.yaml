@@ -1,0 +1,18 @@
+# local_settings.yaml.example
+#
+# Copy this file to `local_settings.yaml` (no ".example") and fill in real
+# paths for your machine. `local_settings.yaml` should NOT be committed to
+# version control -- it's specific to whoever's running the pipeline, not
+# part of the project's actual extraction logic (that's what
+# selector_rules.yaml is for, and IS meant to be shared/committed).
+#
+# All keys are optional. Anything left out falls back to a command-line
+# argument if given, then a sensible default.
+
+content_strategy_xlsx: "/Users/ryan/Downloads/Bemidji State University_ Content Strategy_active.xlsx"
+
+# Usually fine to leave as the default:
+# rules_file: "selector_rules.yaml"
+
+# Where converted pages get written:
+# output_dir: "./migrated_content"

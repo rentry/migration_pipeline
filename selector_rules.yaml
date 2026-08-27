@@ -1,0 +1,182 @@
+# selector_rules.yaml
+#
+# Defines how extract.py finds the "main content" region on a page.
+# This file is entirely separate from the Content Strategy worksheet
+# (which is a client-facing artifact and shouldn't carry technical config).
+#
+# Rules are tried IN ORDER. The first rule whose `match` conditions fit the
+# URL is used. Put more specific rules first, and the most general
+# catch-all rule last.
+#
+# match:
+#   domain:      exact hostname match, e.g. "www.bemidjistate.edu"
+#   path_prefix: URL path must start with this string
+#   (both can be combined; both are optional -- omit domain entirely
+#    for a rule that matches by path only, useful if the same CMS
+#    theme serves multiple subdomains)
+#
+# content_selectors: CSS selectors, tried in order. First one that matches
+#   non-empty content wins. Use several fallbacks per rule, since even a
+#   single template can vary page to page on older, less consistent sites.
+#
+# strip_selectors: removed from *within* the matched content region before
+#   conversion -- share widgets, related-content blocks, embedded nav, etc.
+#   that live inside the main content wrapper but aren't real content.
+
+rules:
+
+  # --- Example: a distinct subdomain running different software entirely.
+  # LibGuides (Springshare) uses consistent, documented class names --
+  # a good case for a specific, confident rule.
+  - name: "LibGuides subsite"
+    match:
+      domain: "libguides.bemidjistate.edu"
+    content_selectors:
+      - "#s-lg-guide-tabs-container"
+      - ".s-lg-guide-body"
+    strip_selectors:
+      - ".s-lg-nav-guide-side"
+      - ".s-lg-guide-tabs"
+      - "script"
+      - "style"
+
+  # --- Example: a specific path pattern within the main domain that's
+  # known to use a distinct template (catalog/program pages).
+  # PLACEHOLDER -- selectors below are plausible guesses, not confirmed.
+  # Replace once we have real HTML samples from this path.
+  - name: "Academic catalog program page (UNCONFIRMED)"
+    match:
+      domain: "www.bemidjistate.edu"
+      path_prefix: "/academics/catalog/"
+    content_selectors:
+      - "main#content"
+      - "article.program"
+      - ".program-detail"
+    strip_selectors:
+      - "nav"
+      - ".breadcrumbs"
+      - "script"
+      - "style"
+
+  # --- The main site's general template.
+  # CONFIRMED against a real page (homepage) on 2026-08-25: the theme
+  # wraps all page content in <main class="bsu-body-content" role="main">.
+  # This is a custom WordPress theme (wp-content/themes/bsuwp) built as a
+  # block/section-based page builder -- see `block_rules` below for how
+  # we classify what's INSIDE this wrapper, since a lot of it is
+  # auto-generated widgets (news feeds, event calendars) rather than
+  # authored body copy. Still need to confirm this same wrapper holds on
+  # non-homepage templates (program pages, department pages, etc.) --
+  # homepages are often the least representative page on a site.
+  - name: "Main site, general template"
+    match:
+      domain: "www.bemidjistate.edu"
+    content_selectors:
+      - "main.bsu-body-content"
+      - "main[role=main]"
+      - "main#content"       # unconfirmed fallback guess, kept just in case
+      - ".entry-content"     # unconfirmed fallback guess, kept just in case
+      - "main"
+    strip_selectors:
+      - "nav"
+      - "header"
+      - "footer"
+      - "script"
+      - "style"
+
+  # --- Catch-all fallback for anything not matched above (other
+  # subdomains, unexpected templates, one-off legacy pages). Deliberately
+  # generic and low-confidence -- extract.py should flag whenever this
+  # rule is the one that fired, so it surfaces for review rather than
+  # being silently trusted.
+  - name: "Generic fallback"
+    match:
+      default: true
+    content_selectors:
+      - "main"
+      - "[role=main]"
+      - "#content"
+      - "#main"
+      - "#main-content"
+      - ".content"
+      - ".main-content"
+      - "article"
+    strip_selectors:
+      - "nav"
+      - "header"
+      - "footer"
+      - ".sidebar"
+      - "script"
+      - "style"
+      - "noscript"
+
+# Thresholds used by extract.py's post-extraction validation, regardless of
+# which rule matched. A "match" that produces near-empty or nav-heavy
+# content is treated as a failed extraction, not a success.
+validation:
+  min_word_count: 30
+  max_link_text_ratio: 0.6   # (chars inside <a> tags) / (total text chars)
+
+# ---------------------------------------------------------------------------
+# Block classification
+# ---------------------------------------------------------------------------
+# The confirmed BSU theme builds pages out of repeating
+# <section class="bsu-block ..."> components, not flat prose. Rather than
+# markdown-ifying the whole matched content region as one blob, extract.py
+# walks the DIRECT CHILD blocks of the matched content element and
+# classifies each one, so a block gets the right treatment instead of a
+# single "did this page look okay overall" judgment.
+#
+# Matched by a substring test against the block's class list (checked in
+# order -- put more specific class names before ones they're a substring
+# of, e.g. "bsu-news-category-posts" before "bsu-news").
+#
+# actions:
+#   keep            - convert normally, no flag
+#   keep_and_flag   - convert, but flag for human review (layout-dependent,
+#                      might not translate cleanly to markdown)
+#   exclude_and_flag - remove entirely from the extracted content, but log
+#                      a flag noting what was removed and why. Used for
+#                      auto-generated feeds/widgets that duplicate content
+#                      living on its own page elsewhere, or pull from an
+#                      external live system (a calendar, a news index).
+#                      Migrating these as static text would create stale
+#                      duplicate content in the new CMS.
+#
+# If a page's matched content element has NO direct-child blocks matching
+# any block_selector below, it's treated as flat content (a single block,
+# action=keep) -- this is the normal case for a plain content page with no
+# page-builder sections.
+
+block_selector: "section.bsu-block"
+
+block_rules:
+  - class_contains: "bsu-news-category-posts"
+    block_type: "dynamic_feed"
+    action: "exclude_and_flag"
+    note: "Auto-generated news teaser feed; duplicates content that exists as its own page."
+
+  - class_contains: "bsu-events"
+    block_type: "dynamic_feed"
+    action: "exclude_and_flag"
+    note: "Live events feed (presence.io); not static content."
+
+  - class_contains: "bsu-news"
+    block_type: "dynamic_feed"
+    action: "exclude_and_flag"
+    note: "Auto-generated recent-posts widget; not authored content."
+
+  - class_contains: "bsu-cards"
+    block_type: "card_grid"
+    action: "keep_and_flag"
+    note: "Card grid of links -- layout-dependent, verify it translates sensibly to markdown."
+
+  - class_contains: "bsu-block-image-side"
+    block_type: "cta_banner"
+    action: "keep_and_flag"
+    note: "Image-paired CTA banner -- verify image/button handling on conversion."
+
+  - class_contains: "bsu-content-on-color"
+    block_type: "cta_banner"
+    action: "keep"
+    note: null
