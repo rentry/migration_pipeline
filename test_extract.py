@@ -198,6 +198,9 @@ def test_individual_cases():
     assert "Don" in r.content_markdown and "miss your start" in r.content_markdown
     assert "Explore Our Programs" in r.content_markdown
     assert "Join Social Work Club" not in r.content_markdown  # events feed, excluded
+    # This fixture is a <main> fragment only (no <head> at all) -- confirm
+    # that degrades to all-None metadata rather than crashing.
+    assert all(v is None for v in r.page_metadata.values())
     assert "More Than 400 BSU Students" not in r.content_markdown  # news feed, excluded
 
     print("=" * 70)
@@ -211,6 +214,16 @@ def test_individual_cases():
     assert r.matched_selector == "main.bsu-body-content"
     assert r.passed_validation
     assert r.block_flags == []  # plain WYSIWYG page, no page-builder blocks at all
+    print(f"  page_metadata: {r.page_metadata}")
+    # Real <head> metadata should be captured, even though it lives
+    # outside the matched <main> content region entirely.
+    assert r.page_metadata["title"] == "Residence Halls"
+    assert r.page_metadata["canonical_url"] == "https://www.bemidjistate.edu/services/reslife/residence-halls/"
+    assert r.page_metadata["og_title"] == "Residence Halls"
+    # This real page has NO <meta name="description"> tag at all --
+    # confirms we handle a genuinely missing field as None, not a crash
+    # or a silently wrong value.
+    assert r.page_metadata["meta_description"] is None
     # Tables should survive as real markdown tables, not get mangled.
     assert "| Residence Hall | Type of Room | Amenities |" in r.content_markdown
     assert "[Oak Hall](https://www.bemidjistate.edu/services/reslife/residence-halls/oak-hall/)" in r.content_markdown

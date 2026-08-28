@@ -45,12 +45,20 @@ def build_page_document(page: Page, results: list[ExtractionResult]) -> PageDocu
     """
     all_flags: list[str] = []
     all_block_flags: list[dict] = []
+    all_source_metadata: list[dict] = []
     sections: list[str] = []
 
     for i, r in enumerate(results):
         all_flags.extend(f"[{r.url}] {f}" for f in r.flags)
         for bf in r.block_flags:
             all_block_flags.append({**bf, "source_url": r.url})
+
+        # Only keep metadata that actually has SOME populated field --
+        # pages with no <head> at all (or a fragment-only source) would
+        # otherwise add a noisy all-None entry that tells a reviewer
+        # nothing.
+        if r.page_metadata and any(v is not None for v in r.page_metadata.values()):
+            all_source_metadata.append({"source_url": r.url, **r.page_metadata})
 
         if len(results) > 1:
             sections.append(f"<!-- SOURCE {i+1} OF {len(results)}: {r.url} -->\n\n{r.content_markdown or ''}")
@@ -74,6 +82,13 @@ def build_page_document(page: Page, results: list[ExtractionResult]) -> PageDocu
         "migration_status": "extracted",
         "flags": all_flags,
     }
+    if all_source_metadata:
+        # Kept distinct from "title" above on purpose: this is the OLD
+        # page's raw <title>/meta info (often has a site-name suffix, an
+        # old meta description written for the old IA, etc) -- useful
+        # reference for whoever writes/edits the new page's SEO fields,
+        # not something to blindly carry forward as-is.
+        frontmatter["source_metadata"] = all_source_metadata
     if all_block_flags:
         frontmatter["block_flags"] = all_block_flags
 

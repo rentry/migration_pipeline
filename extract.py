@@ -190,6 +190,7 @@ class ExtractionResult:
     link_text_ratio: float
     flags: list[str] = field(default_factory=list)
     block_flags: list[dict] = field(default_factory=list)
+    page_metadata: dict = field(default_factory=dict)
     content_html: str | None = None
     content_markdown: str | None = None
 
@@ -240,9 +241,37 @@ def _resolve_relative_urls(content_soup, page_url: str) -> list[str]:
     return flags
 
 
+def _extract_page_metadata(soup: BeautifulSoup) -> dict:
+    """Pulls page-level metadata from <head> -- title, meta description,
+    canonical URL, OG tags, publish/modified dates, author -- none of
+    which live inside the matched <main> content region, so this reads
+    from the full document soup, not content_soup. Every field is
+    optional; a real page won't necessarily have all (or any) of them,
+    so absence is normal, not an error.
+    """
+    def meta_content(attrs: dict) -> str | None:
+        tag = soup.find("meta", attrs=attrs)
+        return tag.get("content") if tag else None
+
+    canonical_tag = soup.find("link", rel="canonical")
+
+    return {
+        "title": soup.title.get_text(strip=True) if soup.title else None,
+        "meta_description": meta_content({"name": "description"}),
+        "canonical_url": canonical_tag.get("href") if canonical_tag else None,
+        "og_title": meta_content({"property": "og:title"}),
+        "og_description": meta_content({"property": "og:description"}),
+        "og_image": meta_content({"property": "og:image"}),
+        "published_date": meta_content({"property": "article:published_time"}),
+        "modified_date": meta_content({"property": "article:modified_time"}),
+        "author": meta_content({"name": "author"}),
+    }
+
+
 def extract_content(html: str, url: str, ruleset: RuleSet) -> ExtractionResult:
     candidate_rules = ruleset.applicable_rules(url)
     soup = BeautifulSoup(html, "lxml")
+    page_metadata = _extract_page_metadata(soup)
 
     rule = None
     matched_selector = None
@@ -282,6 +311,7 @@ def extract_content(html: str, url: str, ruleset: RuleSet) -> ExtractionResult:
             word_count=0,
             link_text_ratio=1.0,
             flags=flags,
+            page_metadata=page_metadata,
         )
 
     if rule is not candidate_rules[0]:
@@ -361,6 +391,7 @@ def extract_content(html: str, url: str, ruleset: RuleSet) -> ExtractionResult:
         link_text_ratio=round(link_ratio, 3),
         flags=flags,
         block_flags=block_flags,
+        page_metadata=page_metadata,
         content_html=content_html,
         content_markdown=content_md,
     )
