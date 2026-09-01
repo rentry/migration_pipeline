@@ -265,6 +265,24 @@ def test_individual_cases():
     assert not any("not_resolvable" in f for f in r2.flags)  # URL resolution itself raised no flags
 
     print("=" * 70)
+    print("mailto:/tel: links (expect: NOT flagged -- these are already complete, valid links)")
+    contact_page_html = """
+        <html><body><main class="bsu-body-content" role="main">
+            <p>Padding text so this block clears the minimum word count
+            threshold for validation, since the real check here is about
+            non-http link schemes, not content length. More padding to
+            clear the configured minimum word threshold here as well.</p>
+            <p>Email <a href="mailto:nina.johnson@bemidjistate.edu">Nina Johnson</a>
+            or call <a href="tel:+1-218-555-0100">218-555-0100</a>.</p>
+        </main></body></html>
+    """
+    r4 = extract_content(contact_page_html, "https://www.bemidjistate.edu/hobson-union/contact-us/", ruleset)
+    print(f"  flags={r4.flags}")
+    assert not any("not_resolvable" in f for f in r4.flags)
+    assert "mailto:nina.johnson@bemidjistate.edu" in r4.content_markdown
+    assert "tel:+1-218-555-0100" in r4.content_markdown
+
+    print("=" * 70)
     print("\nAll assertions passed.\n")
 
 

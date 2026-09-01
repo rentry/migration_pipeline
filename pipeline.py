@@ -34,6 +34,7 @@ from content_strategy import read_content_strategy, Page
 from extract import load_rules, extract_content, fetch_html, FetchError, RuleSet
 from convert import build_page_document, build_stub_document
 from place import write_page_document
+from review_report import write_review_report_json, write_review_report_markdown
 
 
 def run_pipeline(
@@ -127,10 +128,15 @@ def run_pipeline(
 
 
 def write_review_report(review_rows: list[dict], output_root: Path) -> Path:
-    path = Path(output_root) / "_review_report.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(review_rows, indent=2))
-    return path
+    """Writes BOTH the raw JSON (for scripts / summarize_review.py) and a
+    grouped, human-readable markdown version (for anyone who isn't going
+    to open a JSON file). Returns the JSON path for backward compatibility
+    with existing callers that only cared about one path.
+    """
+    json_path = write_review_report_json(review_rows, output_root)
+    md_path = write_review_report_markdown(review_rows, output_root)
+    print(f"Review report written to:\n  {json_path}  (raw data)\n  {md_path}  (human-readable)")
+    return json_path
 
 
 if __name__ == "__main__":

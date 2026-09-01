@@ -225,8 +225,13 @@ def _resolve_relative_urls(content_soup, page_url: str) -> list[str]:
     assumed here.
 
     Returns a list of flag strings for anything that still isn't a valid
-    absolute URL after resolution (a real problem worth surfacing, not
-    silently dropping).
+    URI after resolution (a real problem worth surfacing, not silently
+    dropping). "Valid" means it has SOME scheme -- http/https after
+    resolving a relative path, but also mailto:, tel:, and anything else
+    that was already a complete URI to begin with and needs no resolving
+    at all. Those aren't broken just because they aren't http -- a
+    contact page's "mailto:jane@example.edu" link is completely normal
+    and shouldn't be flagged as a migration problem.
     """
     flags = []
     for tag, attr in [("img", "src"), ("a", "href")]:
@@ -236,7 +241,7 @@ def _resolve_relative_urls(content_soup, page_url: str) -> list[str]:
                 continue
             resolved = urljoin(page_url, val)
             el[attr] = resolved
-            if not resolved.startswith("http"):
+            if not urlparse(resolved).scheme:
                 flags.append(f"{tag}_{attr}_not_resolvable: {val!r} -> {resolved!r}")
     return flags
 

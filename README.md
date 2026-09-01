@@ -12,7 +12,8 @@
 | `pipeline.py` | Orchestrator | Ties all of the above together: reads the worksheet, routes every page by status, writes files, produces one combined review report. **This is what you actually run.** Reads workbook/output paths from `local_settings.yaml` if present (see Setup below). |
 | `test_extract.py` | Tests | Unit tests for rule resolution, block classification, and URL handling — runs against synthetic fixtures plus the two real HTML samples. No network needed. |
 | `test_pipeline.py` | Tests | End-to-end tests: a full-scale run across all 686 real BSU workbook rows (network simulated unavailable) and a small real-content run using the real homepage fixture. No network needed. |
-| `summarize_review.py` | Reporting | Groups `_review_report.json` into counts by status and category, so hundreds of rows are scannable before reading anything line by line. |
+| `review_report.py` | Reporting | Shared categorization logic + both report writers (JSON and human-readable markdown). Used automatically by `pipeline.py` on every run. |
+| `summarize_review.py` | Reporting | Quick terminal summary of an existing `_review_report.json` — counts by status/category, capped failure listing. For the full readable version, just open `_review_report.md` directly. |
 | `fixtures_real/homepage.html` | Fixture | Real BSU homepage markup — page-builder / block pattern, dynamic feeds. |
 | `fixtures_real/residence_halls.html` | Fixture | Real BSU content page — plain prose, real data tables. Saved via Chrome, so its image paths are local artifacts (see note below); kept as-is because it's still a good structural sample. |
 
@@ -72,15 +73,17 @@ This will:
 - Fetch every page marked `existing` in the workbook, extract, convert, and place it
 - Write clearly-marked stub files for every page marked `new`
 - Skip file creation for `crosslink` / `needs_review` rows, logging them instead
-- Write one combined report to `./migrated_content/_review_report.json` covering both worksheet-level issues (blank/ambiguous rows) and extraction-level issues (failed validation, excluded dynamic content, unresolvable URLs)
+- Write one combined review report, in two formats, covering both worksheet-level issues (blank/ambiguous rows) and extraction-level issues (failed validation, excluded dynamic content, unresolvable URLs):
+  - `./migrated_content/_review_report.json` — raw data, for scripts
+  - `./migrated_content/_review_report.md` — grouped by category, real failures (fetch errors, failed validation) surfaced ahead of informational flags, every row included. Open this one directly if you just want to read it.
 
-**Always check the review report before trusting the output wholesale** — it's the single place both kinds of problems surface. With hundreds of rows, read it through the summarizer first rather than line by line:
+**Always check `_review_report.md` before trusting the output wholesale** — it's already grouped and readable, with real failures listed first. For a quick terminal-only glance instead:
 
 ```bash
 python3 summarize_review.py migrated_content/_review_report.json
 ```
 
-It groups rows by status and category (fetch failures, worksheet gaps, flagged page-builder blocks, etc.) and only lists individual rows for genuine failures — fetch errors, non-200 responses, failed validation — capped at 20 in the terminal before pointing you at the full JSON.
+That version caps individual failure listings at 20 and points you at the markdown report for the rest.
 
 ## Things worth knowing before you test
 

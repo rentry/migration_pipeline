@@ -98,6 +98,17 @@ def test_full_scale_no_network():
     print(f"review rows: {len(review_rows)}")
     print(f"report written to: {report_path}")
 
+    # The human-readable markdown report should exist alongside the JSON,
+    # cover every row (no truncation -- this is the actual deliverable),
+    # and surface real failures ahead of informational flags.
+    md_path = out / "_review_report.md"
+    assert md_path.exists(), f"expected {md_path} to exist"
+    md_content = md_path.read_text()
+    assert "# Migration Review Report" in md_content
+    assert "Fetch failed" in md_content
+    # Spot-check a real page ID shows up with its detail, not just a count.
+    assert "1.1.17" in md_content or "Minnesota Peace Officer" in md_content
+
     # Sanity checks against numbers we already confirmed by hand earlier
     # in this project: 15 'new' pages -> stubs written; 4 crosslink + 20
     # needs_review content-strategy-level flags; 647 existing-page rows
@@ -115,7 +126,9 @@ def test_full_scale_no_network():
     assert len(fetch_failed_rows) == 648, len(fetch_failed_rows)
 
     # Stub files should actually exist on disk.
-    stub_files = list(out.rglob("*.md"))
+    # Excludes _review_report.md itself, which also matches *.md but isn't
+    # a migrated page.
+    stub_files = [p for p in out.rglob("*.md") if p.name != "_review_report.md"]
     assert len(stub_files) == 15, f"expected 15 stub .md files, found {len(stub_files)}"
 
     print("All full-scale assertions passed.")
