@@ -283,6 +283,68 @@ def test_individual_cases():
     assert "tel:+1-218-555-0100" in r4.content_markdown
 
     print("=" * 70)
+    print("Missing alt text vs. intentionally empty alt (expect: only the missing one is flagged)")
+    alt_text_html = """
+        <html><body><main class="bsu-body-content" role="main">
+            <p>Padding text so this block clears the minimum word count
+            threshold for validation, since the real check here is about
+            alt text handling, not content length. More padding follows
+            to clear the configured minimum word threshold here too.</p>
+            <img src="https://example.edu/photo1.jpg" alt="A real description">
+            <img src="https://example.edu/photo2.jpg" alt="">
+            <img src="https://example.edu/photo3.jpg">
+        </main></body></html>
+    """
+    r5 = extract_content(alt_text_html, "https://example.edu/page/", ruleset)
+    print(f"  flags={r5.flags}")
+    assert any("image_missing_alt_text" in f and "photo3.jpg" in f for f in r5.flags)
+    assert not any("photo1.jpg" in f for f in r5.flags)  # has real alt, not flagged
+    assert not any("photo2.jpg" in f for f in r5.flags)  # empty alt is intentional, not flagged
+    assert "![A real description](https://example.edu/photo1.jpg)" in r5.content_markdown
+    assert "![](https://example.edu/photo2.jpg)" in r5.content_markdown
+    assert "![](https://example.edu/photo3.jpg)" in r5.content_markdown
+
+    print("=" * 70)
+    print("Heading wrapped entirely in a link (expect: restructured to valid '## [Title](url)')")
+    card_teaser_html = """
+        <html><body><main class="bsu-body-content" role="main">
+            <p>Padding text so this block clears the minimum word count
+            threshold for validation, since the real check here is about
+            heading/link structure, not content length. More padding to
+            clear the configured minimum word threshold here as well.</p>
+            <a href="https://example.edu/news/some-story/">
+                <h2 class="card-title">Some News Headline</h2>
+            </a>
+            <p>A teaser sentence about the story.</p>
+        </main></body></html>
+    """
+    r6 = extract_content(card_teaser_html, "https://example.edu/news/", ruleset)
+    print(f"  flags={r6.flags}")
+    print(f"  markdown snippet: {[l for l in r6.content_markdown.splitlines() if 'Headline' in l]}")
+    assert "## [Some News Headline](https://example.edu/news/some-story/)" in r6.content_markdown
+    # The broken form should NOT appear anywhere in the output.
+    assert "[## Some News Headline]" not in r6.content_markdown
+    assert not any("heading_wrapped_in_link_with_extra_content" in f for f in r6.flags)
+
+    print("=" * 70)
+    print("Heading wrapped in a link ALONGSIDE other content (expect: left alone, flagged for a human)")
+    tangled_card_html = """
+        <html><body><main class="bsu-body-content" role="main">
+            <p>Padding text so this block clears the minimum word count
+            threshold for validation, since the real check here is about
+            a trickier link/heading structure, not content length. More
+            padding to clear the configured minimum word threshold too.</p>
+            <a href="https://example.edu/news/other-story/">
+                <img src="https://example.edu/thumb.jpg" alt="thumb">
+                <h2 class="card-title">Another Headline</h2>
+            </a>
+        </main></body></html>
+    """
+    r7 = extract_content(tangled_card_html, "https://example.edu/news/", ruleset)
+    print(f"  flags={r7.flags}")
+    assert any("heading_wrapped_in_link_with_extra_content" in f for f in r7.flags)
+
+    print("=" * 70)
     print("\nAll assertions passed.\n")
 
 

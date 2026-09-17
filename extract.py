@@ -33,7 +33,7 @@ from urllib.parse import urlparse, urljoin
 
 import requests
 import yaml
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 from markdownify import markdownify
 
 
@@ -208,6 +208,101 @@ def _link_text_ratio(soup: BeautifulSoup) -> float:
     return link_len / total_len
 
 
+HEADING_TAGS = ["h1", "h2", "h3", "h4", "h5", "h6"]
+
+
+def _unwrap_headings_from_links(content_soup) -> list[str]:
+    """Fixes a common markup pattern -- a card/teaser design where the
+    ENTIRE heading is wrapped in an anchor, e.g.
+    <a href="..."><h2>Title</h2></a> -- rather than the more usual
+    <h2><a href="...">Title</a></h2>. Both render identically in a
+    browser, but naive HTML-to-markdown conversion (including
+    markdownify) converts a heading nested inside a link as if the
+    heading were just more inline text, producing broken output like
+    "[## Title](url)" -- the heading marker ends up INSIDE the link's
+    text, so it renders as literal "##" text rather than an actual
+    heading in any markdown viewer.
+
+    This is a general, non-site-specific fix: wrapping a whole heading in
+    a clickable card link is an extremely common design pattern across
+    many different sites, not something particular to one client's
+    markup, so it belongs here rather than in a project's YAML config.
+
+    Restructures <a><h2>Title</h2></a> into <h2><a>Title</a></h2> --
+    same link, same heading, but now markdownify treats the heading as a
+    real block-level element with a link inside it, producing valid
+    "## [Title](url)" output.
+
+    Only handles the case where the anchor's sole child is a heading (the
+    common card-teaser pattern). An anchor wrapping a heading ALONGSIDE
+    other content (an image, a paragraph) is a more tangled structure
+    that's safer to leave alone and flag for a human than to guess at
+    restructuring automatically.
+
+    Returns a list of flags for any near-miss case worth a human glance
+    (an anchor wrapping a heading plus other content) that this function
+    deliberately did not try to fix.
+    """
+    flags = []
+    for a in content_soup.find_all("a"):
+        heading_children = [c for c in a.children if getattr(c, "name", None) in HEADING_TAGS]
+        if not heading_children:
+            continue  # no heading involved here, nothing to do
+
+        if len(heading_children) > 1:
+            flags.append(
+                f"heading_wrapped_in_link_multiple_headings: <a href={a.get('href')!r}> "
+                "contains more than one heading -- left as-is, verify rendering"
+            )
+            continue
+
+        heading = heading_children[0]
+
+        # Ignore whitespace-only text nodes (ordinary HTML formatting --
+        # newlines/indentation between tags) when deciding whether the
+        # heading is the anchor's ONLY meaningful content. Only real
+        # additional content (an image, more text, another element)
+        # counts as "extra" and should route to the flagged, left-alone
+        # branch instead of being restructured.
+        non_whitespace_children = [
+            c for c in a.children
+            if not (isinstance(c, NavigableString) and not c.strip())
+        ]
+        if len(non_whitespace_children) == 1:
+            # Anchor's only meaningful content is the heading -- safe to
+            # restructure.
+            heading.extract()
+            inner_contents = list(heading.contents)
+            heading.clear()
+            for node in inner_contents:
+                a.append(node)
+            a.replace_with(heading)
+            heading.append(a)
+        else:
+            flags.append(
+                f"heading_wrapped_in_link_with_extra_content: <{heading.name}> inside "
+                f"<a href={a.get('href')!r}> alongside other content -- left as-is, verify rendering"
+            )
+    return flags
+
+
+def _flag_missing_alt_text(content_soup) -> list[str]:
+    """Flags images with NO alt attribute at all, distinct from images
+    with alt="" (which is often a deliberate accessibility choice --
+    marking a purely decorative image so screen readers skip it, not an
+    oversight). Both produce identical markdown (![](url)), so without
+    this flag there's no way to tell from the migrated file alone which
+    images need real alt text written during migration versus which were
+    already fine.
+    """
+    flags = []
+    for img in content_soup.find_all("img"):
+        if img.get("alt") is None:
+            src = img.get("src", "")
+            flags.append(f"image_missing_alt_text: {src!r}")
+    return flags
+
+
 def _resolve_relative_urls(content_soup, page_url: str) -> list[str]:
     """Resolve relative img src / a href values against the page's own
     URL, using standard URL resolution (urljoin) -- not any site-specific
@@ -365,6 +460,9 @@ def extract_content(html: str, url: str, ruleset: RuleSet) -> ExtractionResult:
 
     if block_flags:
         flags.append(f"block_level_flags ({len(block_flags)}): see block_flags field")
+
+    flags.extend(_flag_missing_alt_text(content_soup))
+    flags.extend(_unwrap_headings_from_links(content_soup))
 
     image_flags = _resolve_relative_urls(content_soup, url)
     flags.extend(image_flags)
