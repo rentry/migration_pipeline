@@ -422,10 +422,20 @@ def export_page(md_path: Path, ia_root: Path, out_dir: Path):
 
     page_id = str(uuid.uuid4())
     ia_path = md_path.relative_to(ia_root).as_posix()
-    docx_filename = sanitize_filename(ia_path.replace("/", "_").replace(".md", ".docx"))
+    # Mirrors the new IA as real nested folders, not a flattened filename
+    # (e.g. about/our-community/index.docx, not about_our-community_index.docx)
+    # -- easier for a client to navigate a Dropbox/shared-drive delivery the
+    # same way they'd navigate the actual new site. Safe to change: import
+    # matches by the identifier core-property, never by filename or path
+    # (see docx_import.py), and find_returned_docx_files() already walks
+    # arbitrarily nested folders on the way back in regardless.
+    # sanitize_filename's regex doesn't touch "/", so it's safe to apply to
+    # the whole path at once -- each segment gets cleaned independently
+    # either way since it's a global substitution.
+    docx_filename = sanitize_filename(ia_path.replace(".md", ".docx"))
     out_path = out_dir / docx_filename
 
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     _, found_image_indices = build_docx(body, editable_metadata, images, out_path)
     inject_identifier(out_path, page_id, editable_metadata["title"])
 

@@ -9,6 +9,7 @@ local_settings.yaml
 # Generated output
 migrated_content/
 _review_report.json
+docx_export/
 
 __pycache__/
 *.pyc
