@@ -174,10 +174,13 @@ def _resolve_headers(sheet_name: str, header_row_values: list) -> dict[str, int]
 
 
 def read_content_strategy(path: str | Path) -> list[Page]:
-    """Read every page row from every sheet in the workbook.
+    """Read every page row from every page sheet in the workbook.
 
+    Sheets with none of the REQUIRED_HEADERS in row HEADER_ROW are treated
+    as non-page sheets (lookup lists, dashboards) and skipped with a notice.
     Returns a flat list of Page objects, each already classified.
-    Raises ContentStrategyError if any sheet is missing required headers.
+    Raises ContentStrategyError if any page sheet is missing some, but not
+    all, required headers.
     """
     path = Path(path)
     if not path.exists():
@@ -186,13 +189,26 @@ def read_content_strategy(path: str | Path) -> list[Page]:
     wb = load_workbook(path, data_only=True)
     pages: list[Page] = []
     errors: list[str] = []
+    skipped: list[str] = []
 
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
 
+        # No column cap: page sheets grow new columns over time, and a cap
+        # would silently drop any optional header added past it.
         header_row_values = [
-            c.value for c in next(ws.iter_rows(min_row=HEADER_ROW, max_row=HEADER_ROW, max_col=40))
+            c.value for c in next(ws.iter_rows(min_row=HEADER_ROW, max_row=HEADER_ROW))
         ]
+
+        # Sheets with NONE of the required headers aren't page sheets
+        # (taxonomy lookup lists, progress dashboards, etc.). Skip them,
+        # but report the skip so a page sheet can't silently drop out.
+        # Sheets with SOME but not all required headers still fail
+        # validation below, since that usually means a renamed column.
+        present = {str(v).strip() for v in header_row_values if v is not None}
+        if not present & set(REQUIRED_HEADERS):
+            skipped.append(sheet_name)
+            continue
 
         try:
             headers = _resolve_headers(sheet_name, header_row_values)
@@ -209,7 +225,7 @@ def read_content_strategy(path: str | Path) -> list[Page]:
         idx_dept = headers.get("Department tag")
         idx_notes = headers.get("Page content notes (optional)")
 
-        for row in ws.iter_rows(min_row=DATA_START_ROW, max_row=ws.max_row, max_col=40):
+        for row in ws.iter_rows(min_row=DATA_START_ROW, max_row=ws.max_row):
             page_id = row[idx_pid].value
             if page_id is None:
                 continue  # blank spacer row
@@ -225,6 +241,12 @@ def read_content_strategy(path: str | Path) -> list[Page]:
             )
             page.classify()
             pages.append(page)
+
+    if skipped:
+        print(
+            f"Skipped {len(skipped)} non-page sheet(s): "
+            + ", ".join(repr(s) for s in skipped)
+        )
 
     if errors:
         raise ContentStrategyError(
