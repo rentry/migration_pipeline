@@ -33,7 +33,7 @@ from urllib.parse import urlparse, urljoin
 
 import requests
 import yaml
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup, NavigableString, UnicodeDammit
 from markdownify import markdownify
 
 
@@ -173,7 +173,15 @@ def fetch_html(url: str, timeout: int = 20) -> tuple[int, str]:
         })
     except requests.RequestException as e:
         raise FetchError(f"Failed to fetch {url}: {e}") from e
-    return resp.status_code, resp.text
+
+    # requests assumes ISO-8859-1 when the Content-Type header has no
+    # charset, which garbles UTF-8 punctuation (en dashes, curly quotes)
+    # into "â" plus invisible control characters. Trust the header only
+    # when it declares a charset; otherwise decode from the raw bytes,
+    # honoring the page's own <meta charset> and falling back to detection.
+    if "charset=" in resp.headers.get("Content-Type", "").lower():
+        return resp.status_code, resp.text
+    return resp.status_code, UnicodeDammit(resp.content, is_html=True).unicode_markup
 
 
 # ---------------------------------------------------------------------------

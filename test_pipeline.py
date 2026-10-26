@@ -30,7 +30,7 @@ from pipeline import run_pipeline, write_review_report
 # Leave as None to fall back to (in order): a command-line argument, then
 # a file with the default name sitting next to this script.
 # ---------------------------------------------------------------------------
-XLSX_PATH = None
+XLSX_PATH = "Bucks County Community College_ Content Strategy.xlsx"
 
 RULES = "selector_rules.yaml"
 DEFAULT_XLSX_NAME = "Bemidji_State_University__Content_Strategy_active.xlsx"
